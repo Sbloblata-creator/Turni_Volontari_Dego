@@ -9,7 +9,7 @@ st.title("🚑 Turni Pubblica Assistenza Dego")
 conn = st.connection("gsheets", type=GSheetsConnection)
 # 1. Lettura dati dal foglio Turni_Master
 try:
-    df_master = conn.read(worksheet="Turni_Master", ttl=0)
+    df_master = conn.read(ttl=0)
     
     # Filtriamo solo i turni con posti disponibili (Disp > 0)
     df_disponibili = df_master[df_master['Disp'] > 0]
@@ -48,4 +48,5 @@ try:
 
 except Exception as e:
     st.error(f"Errore tecnico: {e}")
+
 
