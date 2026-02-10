@@ -34,7 +34,7 @@ def save_to_github(new_data):
 try:
     # 1. Lettura Turni da Google Sheets
     conn = st.connection("gsheets", type=GSheetsConnection)
-    df_master = conn.read(worksheet="Turni_Master", ttl=0)
+    df_master = conn.read(ttl=0)
     df_master['Disp'] = pd.to_numeric(df_master['Disp'], errors='coerce').fillna(0)
 
     # Filtro turni disponibili
@@ -80,3 +80,4 @@ try:
 
 except Exception as e:
     st.error(f"Errore di sistema: {e}")
+
