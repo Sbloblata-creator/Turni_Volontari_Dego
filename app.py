@@ -12,7 +12,7 @@ conn = st.connection("gsheets", type=GSheetsConnection)
 # Lettura dati dal foglio Turni_Master
 try:
     # Carichiamo il foglio principale
-    df_master = conn.read(worksheet="Turni_Master", ttl=0)
+    df_master = conn.read(ttl=0)
     
     # PULIZIA DATI: Trasformiamo la colonna 'Disp' in numeri, gestendo eventuali errori
     df_master['Disp'] = pd.to_numeric(df_master['Disp'], errors='coerce').fillna(0)
@@ -39,7 +39,7 @@ try:
                 if nome.strip() and email.strip():
                     # 1. Carichiamo il foglio Iscrizioni per aggiungere la riga
                     try:
-                        iscrizioni_attuali = conn.read(worksheet="Iscrizioni", ttl=0)
+                        iscrizioni_attuali = conn.read(worksheet=1, ttl=0)
                         
                         nuova_riga = pd.DataFrame([{
                             "Volontario": nome,
@@ -63,3 +63,4 @@ try:
 except Exception as e:
     st.error(f"⚠️ Errore Tecnico: {e}")
     st.info("Verifica che il foglio 'Turni_Master' sia compilato correttamente e che i Secret siano salvati.")
+
