@@ -9,15 +9,14 @@ st.title("🚑 Turni Pubblica Assistenza Dego")
 # Creazione connessione con Google Sheets
 conn = st.connection("gsheets", type=GSheetsConnection)
 
-# Lettura dati dal foglio Turni_Master
+# 1. LETTURA DATI DAL FOGLIO TURNI_MASTER
 try:
-    # Carichiamo il foglio principale
-    df_master = conn.read(ttl=0)
+    df_master = conn.read(worksheet="Turni_Master", ttl=0)
     
-    # PULIZIA DATI: Trasformiamo la colonna 'Disp' in numeri, gestendo eventuali errori
+    # Pulizia dati per evitare errori di calcolo
     df_master['Disp'] = pd.to_numeric(df_master['Disp'], errors='coerce').fillna(0)
 
-    # Filtriamo solo i turni con posti disponibili (Disp > 0)
+    # Filtriamo solo i turni con posti disponibili
     df_disponibili = df_master[df_master['Disp'] > 0]
 
     if df_disponibili.empty:
@@ -29,7 +28,6 @@ try:
             nome = st.text_input("Nome e Cognome")
             email = st.text_input("Indirizzo Email")
             
-            # Creiamo una lista di opzioni chiara per il volontario
             lista_turni = df_disponibili['ID_Turno'].tolist()
             scelta = st.selectbox("Seleziona il turno desiderato", lista_turni)
             
@@ -37,10 +35,8 @@ try:
 
             if submit:
                 if nome.strip() and email.strip():
-                    # 1. Carichiamo il foglio Iscrizioni per aggiungere la riga
                     try:
-                        iscrizioni_attuali = conn.read(worksheet=1, ttl=0)
-                        
+                        # Prepariamo la nuova riga
                         nuova_riga = pd.DataFrame([{
                             "Volontario": nome,
                             "ID_Turno_Riferimento": scelta,
@@ -48,19 +44,31 @@ try:
                             "Data_Ora_Iscrizione": pd.Timestamp.now().strftime("%d/%m/%Y %H:%M")
                         }])
                         
-                        # 2. Uniamo i dati e carichiamo su Google
-                        updated_iscrizioni = pd.concat([iscrizioni_attuali, nuova_riga], ignore_index=True)
+                        # Proviamo a leggere il foglio Iscrizioni
+                        try:
+                            # Se il foglio esiste ed è popolato
+                            iscrizioni_attuali = conn.read(worksheet="Iscrizioni", ttl=0)
+                            # Se il foglio è totalmente vuoto, conn.read potrebbe restituire un DF senza colonne
+                            if iscrizioni_attuali.empty or len(iscrizioni_attuali.columns) < 2:
+                                updated_iscrizioni = nuova_riga
+                            else:
+                                updated_iscrizioni = pd.concat([iscrizioni_attuali, nuova_riga], ignore_index=True)
+                        except:
+                            # Se il foglio non è accessibile o non esiste, partiamo dalla nuova riga
+                            updated_iscrizioni = nuova_riga
+                        
+                        # SCRITTURA: Invio dati al foglio Iscrizioni
                         conn.update(worksheet="Iscrizioni", data=updated_iscrizioni)
                         
-                        st.success(f"✅ Grazie {nome}! Iscrizione registrata con successo.")
+                        st.success(f"✅ Grazie {nome}! Iscrizione registrata con successo nel foglio Iscrizioni.")
                         st.balloons()
-                        st.info("Puoi chiudere questa pagina o ricaricarla per un'altra iscrizione.")
+                        st.info("Aggiorna la pagina se vuoi inserire un nuovo turno.")
+                        
                     except Exception as e_write:
-                        st.error(f"Errore durante la scrittura: {e_write}")
+                        st.error(f"Errore durante l'invio dei dati: {e_write}")
+                        st.info("Verifica che nel Google Sheet esista una linguetta chiamata esattamente: Iscrizioni")
                 else:
-                    st.error("⚠️ Per favore, inserisci sia il nome che l'email.")
+                    st.error("⚠️ Inserisci sia il nome che l'email.")
 
 except Exception as e:
-    st.error(f"⚠️ Errore Tecnico: {e}")
-    st.info("Verifica che il foglio 'Turni_Master' sia compilato correttamente e che i Secret siano salvati.")
-
+    st.error(f"⚠️ Errore Tecnico in lettura: {e}")
