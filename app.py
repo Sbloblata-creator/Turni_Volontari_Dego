@@ -7,7 +7,6 @@ st.title("🚑 Turni Pubblica Assistenza Dego")
 
 # Creazione connessione con Google Sheets
 conn = st.connection("gsheets", type=GSheetsConnection)
-
 # 1. Lettura dati dal foglio Turni_Master
 try:
     df_master = conn.read(worksheet="Turni_Master", ttl=0)
@@ -48,4 +47,5 @@ try:
                     st.error("Compila tutti i campi!")
 
 except Exception as e:
+
     st.error("Configurazione in corso... Collega il database nelle impostazioni di Streamlit.")
