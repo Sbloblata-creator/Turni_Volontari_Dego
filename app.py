@@ -26,72 +26,69 @@ try:
     conn = st.connection("gsheets", type=GSheetsConnection)
     df_master = conn.read(ttl=0)
     df_master.columns = df_master.columns.str.strip()
+    
+    # Pulizia dati: rendiamo la colonna Disp numerica e ID_Turno stringa
     df_master['Disp'] = pd.to_numeric(df_master['Disp'], errors='coerce').fillna(0)
+    df_master['ID_Turno'] = df_master['ID_Turno'].astype(str).str.strip()
 
     st.subheader("📅 Seleziona il giorno")
+    data_selezionata = st.date_input("Scegli la data", value=datetime.now(), format="DD/MM/YYYY")
     
-    # CALENDARIO CON FORMATO ITALIANO
-    data_selezionata = st.date_input(
-        "Clicca sulla data per vedere i turni", 
-        value=datetime.now(),
-        format="DD/MM/YYYY"  # <--- Forza il formato italiano nel widget
-    )
-    
-    # Trasformiamo la data in stringa GG/MM/AAAA per cercare nel foglio Google
-    data_str = data_selezionata.strftime("%d/%m/%Y")
+    # Formati di ricerca
+    data_str_con_zero = data_selezionata.strftime("%d/%m/%Y")
+    data_str_senza_zero = f"{data_selezionata.day}/{data_selezionata.month}/{data_selezionata.year}"
 
-    # Filtriamo i turni per la data scelta
-    mask = df_master['ID_Turno'].str.contains(data_str) & (df_master['Disp'] > 0)
+    # Filtro turni disponibili (6 posti max definiti nel foglio)
+    mask = (df_master['ID_Turno'].str.contains(data_str_con_zero) | 
+            df_master['ID_Turno'].str.contains(data_str_senza_zero)) & (df_master['Disp'] > 0)
+    
     turni_disponibili = df_master[mask].copy()
 
     if not turni_disponibili.empty:
-        # Estraiamo l'ora e ordiniamo i turni
+        # Estraiamo l'orario (la parte dopo il _)
         turni_disponibili['Ora'] = turni_disponibili['ID_Turno'].str.split('_').str[1]
-        turni_disponibili = turni_disponibili.sort_values(by='Ora')
         
-        st.info(f"Turni disponibili per il **{data_str}**:")
+        # Ordiniamo i turni secondo la tua sequenza specifica
+        ordine_turni = {"00-08": 1, "08-14": 2, "14-18": 3, "18-21": 4, "21-24": 5}
+        turni_disponibili['Ordine'] = turni_disponibili['Ora'].map(ordine_turni)
+        turni_disponibili = turni_disponibili.sort_values('Ordine')
+
+        st.info(f"Turni per il {data_str_con_zero} (Posti disponibili: 6 per turno)")
         
-        with st.form("iscrizione_veloce"):
+        with st.form("iscrizione"):
             nome = st.text_input("Tuo Nome e Cognome")
-            scelta_ora = st.selectbox("Fascia Oraria", turni_disponibili['Ora'].tolist())
+            scelta_ora = st.selectbox("Seleziona Fascia Oraria", turni_disponibili['Ora'].tolist())
             
-            submit = st.form_submit_button("Conferma Iscrizione")
-            
-            if submit:
+            if st.form_submit_button("Conferma Iscrizione"):
                 if nome.strip():
-                    id_finale = f"{data_str}_{scelta_ora}"
                     nuova_riga = pd.DataFrame([{
                         "Volontario": nome,
-                        "ID_Turno": id_finale,
+                        "ID_Turno": f"{data_str_con_zero}_{scelta_ora}",
                         "Data_Iscrizione": datetime.now().strftime("%d/%m/%Y %H:%M")
                     }])
-                    
                     if save_to_github(nuova_riga):
-                        st.success(f"✅ Iscrizione completata per il {data_str}!")
+                        st.success(f"✅ Iscrizione salvata per il turno {scelta_ora}")
                         st.balloons()
                         st.cache_data.clear()
                 else:
-                    st.error("⚠️ Inserisci il nome!")
+                    st.error("Inserisci il tuo nome!")
     else:
-        st.warning(f"Nessun turno disponibile o posti esauriti per il {data_str}.")
+        st.warning(f"Nessun turno trovato per il {data_str_con_zero}. Verifica il foglio Google.")
 
-    # --- LISTA ISCRITTI ---
+    # --- TABELLA ISCRITTI ---
     st.divider()
-    st.subheader(f"👥 Iscritti del {data_str}")
-    url_csv = f"https://raw.githubusercontent.com/{st.secrets['REPO_NAME']}/main/iscrizioni.csv"
+    st.subheader(f"👥 Iscritti del {data_str_con_zero}")
     try:
+        url_csv = f"https://raw.githubusercontent.com/{st.secrets['REPO_NAME']}/main/iscrizioni.csv"
         df_iscritti = pd.read_csv(url_csv)
-        # Filtriamo per la data selezionata
-        iscritti_oggi = df_iscritti[df_iscritti['ID_Turno'].str.contains(data_str)].copy()
-        
+        iscritti_oggi = df_iscritti[df_iscritti['ID_Turno'].str.contains(data_str_con_zero)].copy()
         if not iscritti_oggi.empty:
-            # Puliamo la visualizzazione togliendo la data dall'ID_Turno per la tabella
             iscritti_oggi['Orario'] = iscritti_oggi['ID_Turno'].str.split('_').str[1]
             st.table(iscritti_oggi[['Volontario', 'Orario']])
         else:
-            st.write("_Ancora nessun iscritto per questa data._")
+            st.write("_Nessun iscritto._")
     except:
-        st.info("Inizia a iscriverti per vedere qui l'elenco!")
+        pass
 
 except Exception as e:
     st.error(f"Errore: {e}")
