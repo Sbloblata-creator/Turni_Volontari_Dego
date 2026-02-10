@@ -11,7 +11,7 @@ conn = st.connection("gsheets", type=GSheetsConnection)
 
 # 1. LETTURA DATI DAL FOGLIO TURNI_MASTER
 try:
-    df_master = conn.read(worksheet="Turni_Master", ttl=0)
+    df_master = conn.read(ttl=0)
     
     # Pulizia dati per evitare errori di calcolo
     df_master['Disp'] = pd.to_numeric(df_master['Disp'], errors='coerce').fillna(0)
@@ -72,3 +72,4 @@ try:
 
 except Exception as e:
     st.error(f"⚠️ Errore Tecnico in lettura: {e}")
+
