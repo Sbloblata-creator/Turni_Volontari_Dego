@@ -47,5 +47,5 @@ try:
                     st.error("Compila tutti i campi!")
 
 except Exception as e:
+    st.error(f"Errore tecnico: {e}")
 
-    st.error("Configurazione in corso... Collega il database nelle impostazioni di Streamlit.")
