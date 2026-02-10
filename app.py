@@ -1,75 +1,82 @@
 import streamlit as st
-from streamlit_gsheets import GSheetsConnection
 import pandas as pd
+from github import Github
+from streamlit_gsheets import GSheetsConnection
 
-# Configurazione Pagina
-st.set_page_config(page_title="Turni Volontari Dego", layout="centered")
+st.set_page_config(page_title="Turni Volontari Dego", layout="centered", page_icon="🚑")
 st.title("🚑 Turni Pubblica Assistenza Dego")
 
-# Creazione connessione con Google Sheets
-conn = st.connection("gsheets", type=GSheetsConnection)
+# --- CONNESSIONE GITHUB (Per Scrivere) ---
+def save_to_github(new_data):
+    try:
+        g = Github(st.secrets["GITHUB_TOKEN"])
+        repo = g.get_repo(st.secrets["REPO_NAME"])
+        contents = repo.get_contents("iscrizioni.csv")
+        
+        # Scarica il file CSV attuale
+        existing_df = pd.read_csv(contents.download_url)
+        # Aggiunge la nuova riga
+        updated_df = pd.concat([existing_df, new_data], ignore_index=True)
+        
+        # Carica il file aggiornato su GitHub
+        repo.update_file(
+            contents.path, 
+            "Nuova iscrizione volontario", 
+            updated_df.to_csv(index=False), 
+            contents.sha
+        )
+        return True
+    except Exception as e:
+        st.error(f"Errore nel salvataggio su GitHub: {e}")
+        return False
 
-# 1. LETTURA DATI DAL FOGLIO TURNI_MASTER
+# --- LOGICA APP ---
 try:
-    df_master = conn.read(ttl=0)
-    
-    # Pulizia dati per evitare errori di calcolo
+    # 1. Lettura Turni da Google Sheets
+    conn = st.connection("gsheets", type=GSheetsConnection)
+    df_master = conn.read(worksheet="Turni_Master", ttl=0)
     df_master['Disp'] = pd.to_numeric(df_master['Disp'], errors='coerce').fillna(0)
 
-    # Filtriamo solo i turni con posti disponibili
+    # Filtro turni disponibili
     df_disponibili = df_master[df_master['Disp'] > 0]
 
     if df_disponibili.empty:
-        st.warning("Al momento non ci sono turni con posti disponibili.")
+        st.warning("Nessun turno disponibile al momento.")
     else:
-        st.subheader("Modulo di Iscrizione")
-        
+        st.subheader("Modulo Iscrizione Rapida")
         with st.form("form_iscrizione"):
             nome = st.text_input("Nome e Cognome")
-            email = st.text_input("Indirizzo Email")
+            turno_scelto = st.selectbox("Seleziona il turno", df_disponibili['ID_Turno'].tolist())
             
-            lista_turni = df_disponibili['ID_Turno'].tolist()
-            scelta = st.selectbox("Seleziona il turno desiderato", lista_turni)
-            
-            submit = st.form_submit_button("Conferma Iscrizione")
-
-            if submit:
-                if nome.strip() and email.strip():
-                    try:
-                        # Prepariamo la nuova riga
-                        nuova_riga = pd.DataFrame([{
-                            "Volontario": nome,
-                            "ID_Turno_Riferimento": scelta,
-                            "Email_Volontario": email,
-                            "Data_Ora_Iscrizione": pd.Timestamp.now().strftime("%d/%m/%Y %H:%M")
-                        }])
-                        
-                        # Proviamo a leggere il foglio Iscrizioni
-                        try:
-                            # Se il foglio esiste ed è popolato
-                            iscrizioni_attuali = conn.read(worksheet="Iscrizioni", ttl=0)
-                            # Se il foglio è totalmente vuoto, conn.read potrebbe restituire un DF senza colonne
-                            if iscrizioni_attuali.empty or len(iscrizioni_attuali.columns) < 2:
-                                updated_iscrizioni = nuova_riga
-                            else:
-                                updated_iscrizioni = pd.concat([iscrizioni_attuali, nuova_riga], ignore_index=True)
-                        except:
-                            # Se il foglio non è accessibile o non esiste, partiamo dalla nuova riga
-                            updated_iscrizioni = nuova_riga
-                        
-                        # SCRITTURA: Invio dati al foglio Iscrizioni
-                        conn.update(worksheet="Iscrizioni", data=updated_iscrizioni)
-                        
-                        st.success(f"✅ Grazie {nome}! Iscrizione registrata con successo nel foglio Iscrizioni.")
+            if st.form_submit_button("Conferma Iscrizione"):
+                if nome:
+                    nuova_riga = pd.DataFrame([{
+                        "Volontario": nome,
+                        "ID_Turno": turno_scelto,
+                        "Data_Iscrizione": pd.Timestamp.now().strftime("%d/%m/%Y %H:%M")
+                    }])
+                    
+                    if save_to_github(nuova_riga):
+                        st.success(f"✅ Ottimo lavoro {nome}, iscrizione salvata!")
                         st.balloons()
-                        st.info("Aggiorna la pagina se vuoi inserire un nuovo turno.")
-                        
-                    except Exception as e_write:
-                        st.error(f"Errore durante l'invio dei dati: {e_write}")
-                        st.info("Verifica che nel Google Sheet esista una linguetta chiamata esattamente: Iscrizioni")
+                        st.cache_data.clear() # Forza aggiornamento dati
                 else:
-                    st.error("⚠️ Inserisci sia il nome che l'email.")
+                    st.error("Inserisci il tuo nome.")
+
+    # --- TABELLA ISCRITTI (Sola Lettura) ---
+    st.divider()
+    st.subheader("Riepilogo Volontari Iscritti")
+    
+    # Leggiamo il CSV pubblico direttamente da GitHub
+    url_csv = f"https://raw.githubusercontent.com/{st.secrets['REPO_NAME']}/main/iscrizioni.csv"
+    try:
+        df_iscritti = pd.read_csv(url_csv)
+        if not df_iscritti.empty:
+            st.dataframe(df_iscritti, use_container_width=True, hide_index=True)
+        else:
+            st.info("Nessuno si è ancora iscritto. Sii il primo!")
+    except:
+        st.info("In attesa delle prime iscrizioni...")
 
 except Exception as e:
-    st.error(f"⚠️ Errore Tecnico in lettura: {e}")
-
+    st.error(f"Errore di sistema: {e}")
